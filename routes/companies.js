@@ -1,7 +1,7 @@
 "use strict"
 const express = require("express");
 
-const { NotFoundError } = require("../expressError");
+const { NotFoundError, BadRequestError } = require("../expressError");
 
 const router = new express.Router();
 const db = require("../db");
@@ -21,15 +21,23 @@ router.get("/", async function (req, res, next) {
 
 
 //GET/companies/[code] 
-// Return obj of company: {company: {code, name, description}}
+// Return obj of company: {company: {code, name, description, invoices:[...]}}
 router.get("/:code", async function (req, res, next) {
   const code = req.params.code;
-  const results = await db.query(
+  const cResults = await db.query(
     `SELECT code, name, description
       FROM companies
       WHERE code = $1`, [code]);
-  let company = results.rows[0];
+  let company = cResults.rows[0];
   if (!company) throw new NotFoundError(`Not found: ${code}`);
+
+  const iResults = await db.query(
+    `SELECT id, comp_code, amt, paid, add_date, paid_date
+        FROM invoices
+        WHERE comp_code = $1`, [code]);
+  let invoices = iResults.rows
+  company.invoices = invoices
+
   return res.json({ company });
 })
 
@@ -46,11 +54,10 @@ router.post("/", async function (req, res, next) {
         RETURNING code, name, description`, [code, name, description],
   );
   const company = results.rows[0];
-  if (!company) throw new NotFoundError(`Not found: `); // TODO think about more accurate err
+  if (!company) throw new BadRequestError(`Invalid request - JSON should = {code, name, description}`);
   return res.status(201).json({ company })
 });
 
-// TODO test what is returned in result.rows when successful result but NO RETURNING line
 
 
 // PUT /companies/[code]
@@ -88,14 +95,15 @@ router.delete("/:code", async function (req, res, next) {
     `DELETE FROM companies 
     WHERE code = $1
     RETURNING code`, [code]
-    );
-    console.log("results rows ====>", results.rows);
-    const company = results.rows[0];
-    // if no company found return not found error 
-    if (!company) throw new NotFoundError(`Not found: ${code}`); // TODO specify this err
+  );
+  console.log("results rows ====>", results.rows);
+  const company = results.rows[0];
+  // if no company found return not found error 
+  if (!company) throw new NotFoundError(`Not found: ${code}`);
 
   return res.json({ status: "deleted" });
 });
+
 
 
 
